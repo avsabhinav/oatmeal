@@ -14,6 +14,13 @@ build/
 /build-freeze-cache/
 /dist-freeze/
 
+# Developer ID signing / notarization credentials (NOTARIZE epic).
+# `packaging/signing.env.example` is the committed template; the real file
+# holds a Team ID and keychain profile name and must never be tracked.
+packaging/signing.env
+*.p12
+*.cer
+
 # macOS
 .DS_Store
 

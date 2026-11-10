@@ -27,13 +27,20 @@ so look for it in the top-right of your screen after launching.
 
 ### First launch / Gatekeeper
 
-The DMG build is **adhoc-signed, not notarized** (no Developer ID), so on a fresh
-Mac Gatekeeper blocks the first launch. You'll see something like:
+The DMG is **Developer ID–signed and notarized by Apple**, and the stapled
+notarization ticket travels inside `Oatmeal.app` itself. On a fresh Mac it
+opens with a plain double-click — no Gatekeeper warning, and no
+right-click → Open step.
 
-> "Oatmeal" can't be opened because Apple cannot check it for malicious software.
+If macOS *does* refuse to open it, you are almost certainly running an older
+build from before notarization. Confirm what you have, and re-download if
+needed:
 
-Fix it once: **right-click (control-click) `Oatmeal.app` → Open → Open** in the
-confirmation dialog. After that, normal launches work.
+```sh
+spctl -a -vvv -t exec /Applications/Oatmeal.app
+# notarized + stapled build: ... accepted
+#                              source=Notarization Data
+```
 
 ### What the DMG installs
 
@@ -83,8 +90,11 @@ hdiutil verify dist/Oatmeal-0.1.1.dmg
   PKG_DMG_STAGE_ONLY=1 ./packaging/make_dmg.sh
   ```
   It builds all artifacts and lays out the volume, then exits before `hdiutil`.
-- **Adhoc-signed, not notarized** — recipients hit the Gatekeeper step (see
-  above). A Developer-ID-signed release would need extra signing configuration.
+- **Adhoc-signed, not notarized** — this is the default `make_dmg.sh` output,
+  for local builds. Recipients of such a build hit a Gatekeeper prompt. The
+  **published releases are signed and notarized**: build them with `MR_SIGN=1`,
+  which requires the Developer ID credentials described in
+  [notarization-setup.md](notarization-setup.md).
 
 ---
 

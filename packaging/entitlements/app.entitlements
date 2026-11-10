@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NOTARIZE-1: Hardened-runtime entitlements for Oatmeal.app
+  (Contents/MacOS/Oatmeal and the embedded PyInstaller mr-cli tree under
+  Contents/Resources/mr-cli/).
+
+  Notarization requires the hardened runtime (the codesign runtime option),
+  and the following are the MINIMAL exceptions the first notarization
+  attempt needs. Do not add anything here without a concrete failure that
+  justifies it.
+
+  - com.apple.security.cs.allow-jit: the embedded mr-cli tree is frozen
+    Python (CPython) running MLX/inference code that requires JIT
+    compilation.
+  - com.apple.security.cs.allow-unsigned-executable-memory: CPython and
+    its native .so/.dylib payloads need writable+executable memory;
+    without this they crash at startup under the hardened runtime.
+  - com.apple.security.cs.disable-library-validation: escalation slot,
+    left DISABLED (false). Only flip to true if notarization or runtime
+    loading of the bundled .so/.dylib payloads is rejected by
+    library validation, and prefer fixing the dylib signatures instead.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<false/>
+</dict>
+</plist>

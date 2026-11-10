@@ -81,9 +81,9 @@ You need:
    opens.
 3. Eject the disk image.
 
-> **"Oatmeal can't be opened"?** This build isn't notarized by Apple yet, so
-> macOS blocks the very first launch. Fix it once: in **Applications**,
-> **right-click `Oatmeal.app` → Open → Open**. Normal launches work after that.
+> **Signed and notarized by Apple.** Oatmeal ships as a Developer ID–signed,
+> Apple-notarized build, so it opens with a plain double-click — no
+> right-click → Open, no Gatekeeper warning.
 
 ### 2. Download the speech models (one time)
 
@@ -169,7 +169,7 @@ to get there, or **Change Storage Location...** to put them somewhere else.
 
 | What you see | What to do |
 | --- | --- |
-| macOS says Oatmeal "can't be opened" | Right-click `Oatmeal.app` → **Open** → **Open** (once). |
+| macOS says Oatmeal "can't be opened" | You're likely running an older, pre-notarization build. Download the [latest release](https://github.com/avsabhinav/meeting_recorder/releases/latest), which is signed and notarized. |
 | One side of the call is missing or silent | A permission is usually off. Check **System Settings → Privacy & Security → Microphone** and **System Audio Recording**, then see [permissions troubleshooting](docs/permissions-troubleshooting.md). |
 | The other side is all `Them`, not `Speaker 1/2/...` | The speaker model isn't downloaded. Run step 2 of the install again. |
 | A transcript never shows up | Look in the transcripts folder for a `<stamp>.FAILED.md` note; it explains what happened and how to retry. You can also use **Re-transcribe...**. |
