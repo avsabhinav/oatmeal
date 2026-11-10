@@ -75,7 +75,7 @@ You need:
 ### 1. Install the app
 
 1. Download **`Oatmeal-<version>.dmg`** from the
-   [latest release](https://github.com/avsabhinav/meeting_recorder/releases/latest)
+   [latest release](https://github.com/avsabhinav/oatmeal/releases/latest)
    and double-click it.
 2. Drag **`Oatmeal.app`** onto the **Applications** shortcut in the window that
    opens.
@@ -117,7 +117,7 @@ That's it, you're set up.
 <details>
 <summary><b>Where do I get the DMG?</b></summary>
 
-From the [Releases page](https://github.com/avsabhinav/meeting_recorder/releases/latest).
+From the [Releases page](https://github.com/avsabhinav/oatmeal/releases/latest).
 Each release also lists the DMG's SHA-256 checksum. You can build it yourself
 with `./packaging/make_dmg.sh` (see the
 [technical guide](docs/installing.md#2-building-the-dmg-from-source)).
@@ -169,7 +169,7 @@ to get there, or **Change Storage Location...** to put them somewhere else.
 
 | What you see | What to do |
 | --- | --- |
-| macOS says Oatmeal "can't be opened" | You're likely running an older, pre-notarization build. Download the [latest release](https://github.com/avsabhinav/meeting_recorder/releases/latest), which is signed and notarized. |
+| macOS says Oatmeal "can't be opened" | You're likely running an older, pre-notarization build. Download the [latest release](https://github.com/avsabhinav/oatmeal/releases/latest), which is signed and notarized. |
 | One side of the call is missing or silent | A permission is usually off. Check **System Settings → Privacy & Security → Microphone** and **System Audio Recording**, then see [permissions troubleshooting](docs/permissions-troubleshooting.md). |
 | The other side is all `Them`, not `Speaker 1/2/...` | The speaker model isn't downloaded. Run step 2 of the install again. |
 | A transcript never shows up | Look in the transcripts folder for a `<stamp>.FAILED.md` note; it explains what happened and how to retry. You can also use **Re-transcribe...**. |
