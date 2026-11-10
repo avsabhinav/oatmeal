@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NOTARIZE-1: Hardened-runtime entitlements for the mr-capture helper
+  (Contents/Resources/mr-capture), the small Swift binary that records
+  microphone + system audio.
+
+  The hardened runtime (required for notarization) revokes the audio
+  entitlements that a non-hardened binary would otherwise get from
+  TCC grants, so mr-capture must declare them explicitly. These are the
+  MINIMAL exceptions for the first notarization attempt; do not add more
+  without a concrete failure that justifies it.
+
+  - com.apple.security.device.audio-input: microphone capture, required
+    once the helper runs under the hardened runtime.
+  - com.apple.security.cs.allow-jit: defensive; the helper's Swift
+    runtime and any code paths it exercises must stay JIT-capable.
+  - com.apple.security.cs.allow-unsigned-executable-memory: defensive;
+    Swift runtime and audio capture stack must not hit executable-memory
+    restrictions.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

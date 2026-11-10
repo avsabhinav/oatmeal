@@ -37,6 +37,15 @@ cp -f "$BIN" "$APP/Contents/MacOS/Oatmeal"
 chmod +x "$APP/Contents/MacOS/Oatmeal"
 cp -f "$(pwd)/Info.plist" "$APP/Contents/Info.plist"
 
+# PkgInfo: the classic 8-byte type/creator file every real .app bundle has
+# (e.g. Calculator.app -> "APPL????"). Without it — together with the
+# CFBundlePackageType=APPL key in Info.plist — Gatekeeper does not recognize the
+# bundle as an application and rejects it even when the signature is valid and
+# notarization was accepted, with the literal message:
+#   "rejected (the code is valid but does not seem to be an app)"
+# Adding it costs nothing and makes the bundle structurally standard.
+printf 'APPL????' > "$APP/Contents/PkgInfo"
+
 # Bundle the new app icon (BRAND-2): Finder reads it via CFBundleIconFile.
 mkdir -p "$RES_DIR"
 cp -f "$(pwd)/../assets/branding/app.icns" "$RES_DIR/app.icns"

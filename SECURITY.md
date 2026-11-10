@@ -24,10 +24,17 @@ The repository does not contain — and should never commit — any recordings, 
 
 ## Code signing & permissions
 
-- `mr-capture` is **adhoc-signed** (no Developer ID / notarization) and embeds usage descriptions for the two macOS TCC permissions it requires: **Microphone** and **System Audio Recording** (macOS 14.2+). You grant both the first time a capture starts.
+- Release builds of `Oatmeal.app` and its embedded `mr-capture` helper are **Developer ID–signed, hardened-runtime, and notarized by Apple** (`packaging/sign_app.sh`, `packaging/notarize_app.sh`). `mr-capture` embeds usage descriptions for the two macOS TCC permissions it requires: **Microphone** and **System Audio Recording** (macOS 14.2+). You grant both the first time a capture starts.
+- A local build from source (`packaging/make_dmg.sh` without `MR_SIGN=1`) is **adhoc-signed and not notarized** — that path exists for development only and is not what releases ship.
 - If you run captures from the `Oatmeal` menu-bar app, the app is the responsible process for the TCC prompts.
 
-Because the binary is adhoc-signed, verify what you run: the source is in this repo (`capture/`), and you can rebuild it yourself with `cd capture && ./build.sh`.
+You do not have to trust the binary: verify the signature and notarization yourself, and note that the source is in this repo (`capture/`) and can be rebuilt with `cd capture && ./build.sh`.
+
+```sh
+codesign -dv --verbose=4 /Applications/Oatmeal.app   # expect Authority=Developer ID Application … (HL2336X7UD)
+spctl -a -vvv -t exec /Applications/Oatmeal.app      # expect accepted, source=Notarization Data
+xcrun stapler validate /Applications/Oatmeal.app     # expect "The validate action worked!"
+```
 
 ## Reporting a vulnerability
 
