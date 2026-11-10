@@ -51,6 +51,10 @@ nohup.out
 /developers/
 /docs/backlog/
 
+# Local agent tooling artifacts (Playwright MCP dumps, Claude Code config).
+/.claude/
+/.playwright-mcp/
+
 # Local agent-orientation map (deliberately not shipped to the public repo).
 # Read during local development sessions; kept with the working tree only.
 /AGENTS.md
