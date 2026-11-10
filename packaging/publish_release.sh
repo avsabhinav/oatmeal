@@ -160,8 +160,12 @@ OLD_HASH="${OLD_HASH_LINE%% *}"
 if [[ -z "${OLD_HASH:-}" || "$OLD_HASH" != "$NEW_HASH" ]]; then
   die "checksum MISMATCH: $SHA_FILE records ${OLD_HASH:-<empty>} but the DMG on disk hashes to $NEW_HASH. Refusing to publish (the sidecar no longer describes this file)."
 fi
-# Refresh the sidecar from the file on disk (same format: "<hash>  <filename>").
-printf '%s\n' "$NEW_HASH_LINE" > "$SHA_FILE"
+# Refresh the sidecar as "<hash>  <basename>". Do NOT use the raw
+# `shasum -a 256 "$DMG"` output: it prints the ABSOLUTE path, so the published
+# sidecar would contain this machine's directory and be useless to anyone
+# (shasum -c would fail on the path). Keep the filename only, matching the
+# format the download page documents.
+printf '%s  %s\n' "$NEW_HASH" "$(basename "$DMG")" > "$SHA_FILE"
 echo "checksum verified: $NEW_HASH"
 
 # --- Confirmation before the destructive step ---------------------------------
