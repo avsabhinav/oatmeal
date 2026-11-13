@@ -19,12 +19,14 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.1</string>
+	<string>0.1.2</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Oatmeal records the microphone during a call for local transcription.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Oatmeal records system (speaker) audio during a call for local transcription.</string>
 	<key>NSCalendarsUsageDescription</key>
+	<string>Oatmeal reads your Apple Calendar so you can attach the current meeting (title, attendees, notes) to a recording.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Oatmeal reads your Apple Calendar so you can attach the current meeting (title, attendees, notes) to a recording.</string>
 	<key>LSUIElement</key>
 	<true/>

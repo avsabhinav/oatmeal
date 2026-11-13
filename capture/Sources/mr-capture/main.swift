@@ -88,6 +88,8 @@ func writeMeta(_ dir: String) {
             "native_channels": mic.nativeChannels,
             "first_sample_seconds": (firstMicHost != nil) ? machToSeconds(firstMicHost!) : 0,
             "samples_written": sw,
+            "peak": mic.writer.peakAmplitude,
+            "rms": mic.writer.rmsAmplitude,
         ],
         "system": [
             "device_name": system.deviceName,
@@ -95,6 +97,8 @@ func writeMeta(_ dir: String) {
             "native_channels": system.nativeChannels,
             "first_sample_seconds": (firstSysHost != nil) ? machToSeconds(firstSysHost!) : 0,
             "samples_written": ow,
+            "peak": systemWriter.peakAmplitude,
+            "rms": systemWriter.rmsAmplitude,
         ],
     ]
     let url = URL(fileURLWithPath: dir + "/meta.json")
@@ -113,6 +117,18 @@ func shutdown() -> Never {
     log(String(format: "mic.wav: %.1f s", mic.writer.durationSeconds))
     log(String(format: "system.wav: %.1f s (%d callbacks, %d empty)",
                systemWriter.durationSeconds, system.callbackCount, system.emptyCallbackCount))
+    log(String(format: "mic level: peak %d rms %.4f",
+               mic.writer.peakAmplitude, mic.writer.rmsAmplitude))
+    log(String(format: "system level: peak %d rms %.4f",
+               systemWriter.peakAmplitude, systemWriter.rmsAmplitude))
+    // A digitally-silent stream with data written is the signature of a
+    // denied microphone: make it impossible to miss.
+    if mic.writer.peakAmplitude == 0 && mic.writer.samplesWritten > 0 {
+        log("warning: mic track is SILENT (all samples zero) — check Microphone permission for Oatmeal in System Settings, Privacy and Security")
+    }
+    if systemWriter.peakAmplitude == 0 && systemWriter.samplesWritten > 0 {
+        log("warning: system track is SILENT (all samples zero) — check the system audio recording permission in System Settings, Privacy and Security")
+    }
     // The first-sample gap is what shifts every Them timestamp; state it
     // outright rather than leaving it to be derived from meta.json.
     if let m = mic.firstSampleHostTime, let s = system.firstSampleHostTime {

@@ -47,7 +47,7 @@ from mr.core.output import (
     write_json,
     write_transcript,
 )
-from mr.core.schema import Segment, from_capture_dict
+from mr.core.schema import CaptureMeta, Segment, from_capture_dict, is_silent_stream
 from mr.core.transcribe import (
     DEFAULT_MODEL,
     ModelNotCachedError,
@@ -241,6 +241,7 @@ def _transcribe_and_write(
     )
     duration = max((s.end for s in you_segments + them_segments), default=0.0)
     context = _read_meeting_context(o)
+    capture = _read_capture_meta(o)
     md_path = _transcripts_dir(cfg) / f"{stamp}.md"
     write_transcript(
         md_path,
@@ -250,6 +251,7 @@ def _transcribe_and_write(
             segments=merged,
             duration_seconds=duration,
             context=context,
+            capture=capture,
         ),
     )
     if json_sidecar:
@@ -296,6 +298,42 @@ def _stream_start_offsets(out_dir: Path) -> tuple[float, float]:
     if delta > 0:
         return (0.0, delta)  # system tap started late; push Them forward
     return (-delta, 0.0)  # mic started late (or dead even); push You forward
+
+
+def _read_capture_meta(out_dir: Path) -> CaptureMeta | None:
+    """Load ``meta.json`` from a recording dir; ``None`` when missing/invalid.
+
+    Fail-soft like :func:`_stream_start_offsets`: a missing, unreadable, or
+    malformed ``meta.json`` yields ``None`` rather than raising, so the
+    transcript is still written (without the silent-track warning).
+    """
+    try:
+        parsed = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+        return from_capture_dict(parsed)
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+def _latest_recording_meta(out_root: str) -> tuple[str, CaptureMeta] | None:
+    """Newest <out_root>/recordings/<stamp> with a readable meta.json, or None.
+
+    Stamps sort lexicographically by time, so the newest recording is the
+    greatest directory name. If that newest directory's meta.json is missing or
+    malformed we return ``None`` rather than falling back to an older recording:
+    the line `mr doctor` prints is about the LATEST recording, so silently
+    reporting an older one would mislead the user.
+    """
+    try:
+        recs = sorted(p for p in (Path(out_root) / "recordings").iterdir() if p.is_dir())
+        if not recs:
+            return None
+        newest = recs[-1]
+    except OSError:
+        return None
+    meta = _read_capture_meta(newest)
+    if meta is None:
+        return None
+    return (newest.name, meta)
 
 
 def _write_failed_stub(cfg: Config, stamp: str, out_dir: str, error: BaseException) -> Path | None:
@@ -790,6 +828,7 @@ def process(
 
     out = out_dir or system.parent
     stamp = stamp or system.stem
+    capture = _read_capture_meta(system.parent)
     md_path = out / f"{stamp}.md"
     write_transcript(
         md_path,
@@ -798,6 +837,7 @@ def process(
             source_dir=f"recordings/{stamp}",
             segments=merged,
             duration_seconds=duration,
+            capture=capture,
         ),
     )
     typer.echo(f"wrote {md_path}")
@@ -943,6 +983,29 @@ def doctor(
     typer.echo(f"model: {cfg.model}")
     cached = _model_cached(cfg.model)
     typer.echo(f"model cached: {'yes' if cached else 'no'}")
+
+    # Fail-soft: a missing/empty recordings dir or a malformed meta.json must
+    # never break `mr doctor` — we just report the mic level as unknown.
+    try:
+        latest = _latest_recording_meta(cfg.out_root)
+    except Exception:  # defensive: discovery must not raise
+        latest = None
+    if latest is None:
+        typer.echo("mic: unknown (no recording found)")
+    else:
+        stamp, capture = latest
+        mic = capture.mic
+        if mic.peak is None:
+            typer.echo(
+                f"mic: not measured in the latest recording ({stamp}) — re-record to confirm"
+            )
+        elif is_silent_stream(mic):
+            typer.echo(
+                f"mic: SILENT in the latest recording ({stamp}) — check Microphone "
+                "permission for Oatmeal in System Settings ▸ Privacy & Security"
+            )
+        else:
+            typer.echo(f"mic: ok in the latest recording ({stamp}) — peak {mic.peak} rms {mic.rms}")
 
     if fetch_model:
         if cached:

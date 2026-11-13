@@ -9,6 +9,17 @@
   attempt needs. Do not add anything here without a concrete failure that
   justifies it.
 
+  MIC-TCC.T2: microphone permission is attributed to Oatmeal, the
+  responsible process. Oatmeal therefore holds the microphone
+  entitlement itself, and the embedded mr-capture helper deliberately
+  does NOT declare it (see helper.entitlements), so the grant the user
+  gives to Oatmeal in System Settings, Privacy and Security applies to
+  the helper's capture, and no second app ever appears in the Privacy
+  list.
+  - com.apple.security.device.audio-input: microphone capture, held by
+    the Oatmeal app so the TCC subject is Oatmeal alone.
+  - com.apple.security.personal-information.calendars: Calendar (EventKit)
+    access; required for the Calendar permission prompt under hardened runtime.
   - com.apple.security.cs.allow-jit: the embedded mr-cli tree is frozen
     Python (CPython) running MLX/inference code that requires JIT
     compilation.
@@ -23,6 +34,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>

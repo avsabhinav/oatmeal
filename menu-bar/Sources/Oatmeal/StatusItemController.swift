@@ -1,4 +1,5 @@
 import AppKit
+import EventKit
 
 /// Owns the `NSStatusItem` and drives all UI state (MB-SW3).
 ///
@@ -446,11 +447,51 @@ final class StatusItemController: NSObject {
 
     // MARK: - Calendar quick-start (CAL-L3)
 
+/// CAL3.T3: issues a Calendar permission request with the app activated
+/// first, so macOS raises a prompt attributed to Oatmeal instead of
+/// silently recording a denial.
+///
+/// Ordering contract (pinned by `CalendarActivationTests`):
+/// 1. `activate` runs first, on the main thread — this accessory app never
+///    activates itself anywhere else, so without this the TCC request is
+///    issued while another app is frontmost.
+/// 2. The app's active state is then read on the main thread. Activation
+///    is asynchronous, so the helper settles for at most `settleTimeout`
+///    (polling every `pollInterval`, non-blocking via `Task.sleep`) before
+///    reading the final value.
+/// 3. Only then is the async `request` issued, receiving the observed
+///    state so `checkOrRequestAccess` logs the app's ACTUAL active state
+///    at request time — never an assumed default.
+///
+/// The closures are injectable so this ordering is unit-testable without
+/// a live AppKit/TCC environment. The function is @MainActor so activation
+/// and the state read happen on the main thread; the async `request` itself
+/// still runs off the main thread (nonisolated async), so the main thread
+/// is never blocked.
+@MainActor
+static func runCalendarRequestActivated(
+    activate: @MainActor @escaping () -> Void,
+    isAppActive: @MainActor @escaping () -> Bool,
+    request: @escaping (_ isAppActive: Bool) async -> CalendarAccess,
+    settleTimeout: TimeInterval = 0.5,
+    pollInterval: TimeInterval = 0.025
+) async -> CalendarAccess {
+    activate()
+    var active = false
+    let deadline = Date().addingTimeInterval(settleTimeout)
+    repeat {
+        active = isAppActive()
+        if active || Date() >= deadline { break }
+        try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
+    } while true
+    return await request(active)
+}
+
     /// "Start Recording from Calendar…" (top-level item, tag 708). Checks/requests
     /// Calendar access and fetches events in `[now−1h, now+2h]` OFF the main
-    /// thread, then pops a dynamic submenu of those events. Permission denied or
-    /// no events are surfaced gracefully — the calendar path never blocks a plain
-    /// recording.
+    /// thread, then pops a dynamic submenu of those events. A denied or
+    /// restricted state is surfaced as an actionable alert (settings deep-link
+    /// and/or Try Again) — the calendar path never blocks a plain recording.
     @objc func startRecordingFromCalendar(_ sender: Any?) {
         guard let statusItem = statusItem.button else { return }
         let tag = MenuBuilder.calendarMenuTag
@@ -460,50 +501,184 @@ final class StatusItemController: NSObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let source = EventListProvider().source
-            // The permission request is async; run it in a child Task so the
-            // code stays off the main thread while still outside the
-            // synchronous global closure. Task inherits this background
-            // executor, so `await checkOrRequestAccess` never blocks main.
-            Task {
-                let access = await checkOrRequestAccess(source)
-                let title = defaultTitle
-                guard access == .granted else {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        self.menuBuilder.menu.item(withTag: tag)?.title = title
-                        let alert = NSAlert()
-                        alert.alertStyle = .warning
-                        alert.messageText = "Calendar access not granted"
-                        alert.informativeText =
-                            "A calendar meeting is needed to start a recording with context. " +
-                            "Grant Calendar access in System Settings ▸ Privacy & Security ▸ Calendars."
-                        alert.runModal()
-                        self.statusItem.button?.needsDisplay = true
+            // ONE store for the whole flow: created here (off the main
+            // thread) and threaded through the access check, the event
+            // fetch, and the "Try Again" re-check, so the store macOS
+            // authorized is the store that reads the events.
+            let source = EKCalendarSource()
+            // CAL3.T4: capture the authorization status BEFORE the request —
+            // purely for the alert's messaging. If the status is already
+            // `.denied`, the TCC denial is STICKY: `requestFullAccessToEvents()`
+            // will keep returning `false` and macOS will never prompt again,
+            // so a "Try Again" button cannot help. If the status is requestable
+            // (`.notDetermined` or `.writeOnly`), any denial came from declining
+            // a real prompt, where "Try Again" is still meaningful. This read
+            // does not influence `checkOrRequestAccess`'s decision at all.
+            let origin = calendarDenialOrigin(for: source.authorizationStatus())
+            // CAL3.T3: activate the app (main thread) BEFORE issuing the
+            // request, so macOS raises the prompt attributed to Oatmeal
+            // instead of silently recording a denial while another app is
+            // frontmost. `requestFullAccessToEvents()` is async and
+            // non-blocking, so awaiting it after activation is safe: the
+            // main thread stays responsive and the prompt is presented over
+            // the (now active) app. The REAL active state, read on the main
+            // thread, is threaded into the decision function.
+            Task { [weak self] in
+                let access = await Self.runCalendarRequestActivated(
+                    activate: { NSApp.activate() },
+                    isAppActive: { NSApp.isActive },
+                    request: { active in
+                        await checkOrRequestAccess(source, isAppActive: active)
                     }
-                    return
-                }
-
-                let events = EventListProvider().fetchCalendarEvents()
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    self.menuBuilder.menu.item(withTag: tag)?.title = title
-                    self.pendingMeetingEvents = events
-                    let sub = MenuBuilder.buildCalendarSubmenu(
-                        events,
-                        isEnabled: self.cliAvailable,
-                        target: self,
-                        action: #selector(StatusItemController.startRecordingWithCalendarEvent(_:))
-                    )
-                    sub.popUp(
-                        positioning: nil,
-                        at: NSPoint(x: statusItem.bounds.maxX, y: statusItem.bounds.maxY + 4),
-                        in: statusItem
-                    )
-                    self.statusItem.button?.needsDisplay = true
-                }
+                )
+                await self?.presentCalendarResult(
+                    access: access,
+                    origin: origin,
+                    source: source,
+                    statusItem: statusItem,
+                    tag: tag,
+                    defaultTitle: defaultTitle
+                )
             }
         }
+    }
+
+    /// Main-thread flow for a calendar quick-start result. `.granted` fetches
+    /// events (off the main thread) and pops the event submenu. Otherwise it
+    /// shows the alert described by `calendarAlertPlan(for:)` and acts on the
+    /// pressed button: "Open System Settings" deep-links to the Calendar
+    /// privacy pane; "Try Again" re-runs `checkOrRequestAccess` and, on
+    /// success, continues straight to the submenu — no second menu click.
+    /// Every path restores the menu title and refreshes the status item.
+    @MainActor
+    private func presentCalendarResult(
+        access: CalendarAccess,
+        origin: CalendarDenialOrigin,
+        source: CalendarSource,
+        statusItem: NSStatusBarButton,
+        tag: Int,
+        defaultTitle: String
+    ) async {
+        if access == .granted {
+            await self.showCalendarEventSubmenu(
+                source: source,
+                statusItem: statusItem, tag: tag, defaultTitle: defaultTitle
+            )
+            return
+        }
+
+        let response = self.runCalendarAccessAlert(
+            plan: calendarAlertPlan(for: access, origin: origin)
+        )
+        self.menuBuilder.menu.item(withTag: tag)?.title = defaultTitle
+        self.statusItem.button?.needsDisplay = true
+
+        switch response {
+        case .openSettings:
+            // The documented deep link straight to the Calendar privacy pane.
+            NSWorkspace.shared.open(Self.calendarSettingsURL)
+        case .tryAgain:
+            // CAL3.T3: the user may have switched apps while the alert was up,
+            // so re-activate (this is already @MainActor) and read the REAL
+            // active state on the main thread before the re-check, so the
+            // decision function logs it and the prompt is attributed to
+            // Oatmeal. `checkOrRequestAccess` is nonisolated async, so this
+            // re-check runs off the main thread and re-raises the real prompt
+            // when the state allows one. The SAME source from this flow is
+            // re-checked — the store macOS authorized is the one that reads
+            // the events.
+            NSApp.activate()
+            let recheck = await checkOrRequestAccess(source, isAppActive: NSApp.isActive)
+            if recheck == .granted {
+                await self.showCalendarEventSubmenu(
+                    source: source,
+                    statusItem: statusItem, tag: tag, defaultTitle: defaultTitle
+                )
+            } else {
+                // Re-present the (possibly different) alert once more. A
+                // second "Try Again" would only repeat the same result, so
+                // this single re-check avoids an endless loop.
+                // CAL3.T4: by the time we are here, the denial is STICKY
+                // (either it was sticky before the prompt, or the user just
+                // declined the real prompt), so the default `.stickyDenial`
+                // origin is the honest one: this re-presented alert offers
+                // Settings and the reset guidance, not another "Try Again".
+                let recheckResponse = self.runCalendarAccessAlert(
+                    plan: calendarAlertPlan(for: recheck)
+                )
+                self.menuBuilder.menu.item(withTag: tag)?.title = defaultTitle
+                self.statusItem.button?.needsDisplay = true
+                if recheckResponse == .openSettings {
+                    NSWorkspace.shared.open(Self.calendarSettingsURL)
+                }
+            }
+        case .dismiss:
+            break
+        }
+    }
+
+    /// The documented macOS deep link for the Calendar privacy pane.
+    private static let calendarSettingsURL = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+    )!
+
+    /// Fetches the current events OFF the main thread, then restores the menu
+    /// title and pops the dynamic event submenu at the status item.
+    @MainActor
+    private func showCalendarEventSubmenu(
+        source: CalendarSource,
+        statusItem: NSStatusBarButton,
+        tag: Int,
+        defaultTitle: String
+    ) async {
+        // Fetch over the SAME source the flow already authorized, off the
+        // main thread (the caller of `presentCalendarResult` may be on it).
+        let provider = EventListProvider(source: source)
+        let events = await Task.detached(priority: .userInitiated) {
+            provider.fetchCalendarEvents()
+        }.value
+        self.menuBuilder.menu.item(withTag: tag)?.title = defaultTitle
+        self.pendingMeetingEvents = events
+        let sub = MenuBuilder.buildCalendarSubmenu(
+            events,
+            isEnabled: self.cliAvailable,
+            target: self,
+            action: #selector(StatusItemController.startRecordingWithCalendarEvent(_:))
+        )
+        sub.popUp(
+            positioning: nil,
+            at: NSPoint(x: statusItem.bounds.maxX, y: statusItem.bounds.maxY + 4),
+            in: statusItem
+        )
+        self.statusItem.button?.needsDisplay = true
+    }
+
+    /// Presents the `NSAlert` described by `plan` (main thread) and reports
+    /// which button the user pressed. Buttons are added in plan order, so the
+    /// first is the default (`.alertFirstButtonReturn`). The mapping from the
+    /// pressed button to a response lives in the pure, testable
+    /// `calendarAlertResponse(plan:pressedButtonIndex:)`, which derives each
+    /// button's index from the SAME flags that added the buttons — so a
+    /// single-button alert can never be misread as a different action.
+    @MainActor
+    private func runCalendarAccessAlert(plan: CalendarAlertPlan?) -> CalendarAlertResponse {
+        guard let plan else { return .dismiss }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = plan.title
+        alert.informativeText = plan.message
+        if plan.showsSettingsButton {
+            alert.addButton(withTitle: "Open System Settings")
+        }
+        if plan.showsTryAgainButton {
+            alert.addButton(withTitle: "Try Again")
+        }
+        // `NSApplication.ModalResponse` encodes the pressed button's position:
+        // `alertFirstButtonReturn` (1000) + 0-based index, so the index is a
+        // plain integer the pure mapping can reason about.
+        let modal = alert.runModal()
+        let buttonIndex = modal.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        return calendarAlertResponse(plan: plan, pressedButtonIndex: buttonIndex)
     }
 
     /// One event row of the dynamic calendar submenu chosen → start a recording
@@ -705,4 +880,140 @@ final class StatusItemController: NSObject {
     @objc func quit(_ sender: Any?) {
         NSApp.terminate(nil)
     }
+}
+
+// MARK: - Calendar access alert planning (pure, AppKit-free)
+
+/// Which button the user pressed in the calendar-access alert.
+enum CalendarAlertResponse {
+    case openSettings
+    case tryAgain
+    case dismiss
+}
+
+/// The content of the alert shown when Calendar access is not granted.
+/// Pure data — no AppKit types — so the mapping is unit-testable.
+struct CalendarAlertPlan {
+    let title: String
+    let message: String
+    let showsSettingsButton: Bool
+    let showsTryAgainButton: Bool
+}
+
+/// Where a `.denied` outcome came from — this decides whether a "Try Again"
+/// button can possibly help (CAL3.T4).
+enum CalendarDenialOrigin {
+    /// The status was already `.denied` BEFORE the request: a STICKY TCC
+    /// denial. `requestFullAccessToEvents()` will keep returning `false` and
+    /// macOS will never prompt this app again, so "Try Again" cannot fix it —
+    /// only System Settings or a `tccutil reset` can.
+    case stickyDenial
+    /// The status was requestable (`.notDetermined` or `.writeOnly`) and the
+    /// user declined a real prompt — "Try Again" re-runs a request that can
+    /// still help, so it remains a meaningful button.
+    case declinedRequest
+}
+
+/// Pure, display-only mapping from the pre-request authorization status to
+/// the denial origin used for alert messaging (CAL3.T4). Requestable states
+/// mean any upcoming denial came from declining a real prompt; everything
+/// else (including an already-recorded `.denied`) is sticky. This never
+/// influences `checkOrRequestAccess`'s decision — it only picks the alert's
+/// wording and button set.
+func calendarDenialOrigin(for status: EKAuthorizationStatus) -> CalendarDenialOrigin {
+    switch status {
+    case .notDetermined, .writeOnly:
+        return .declinedRequest
+    default:
+        return .stickyDenial
+    }
+}
+
+/// Maps a `CalendarAccess` outcome (and, for `.denied`, WHERE that denial
+/// came from) to the alert that should be shown, or `nil` when no alert is
+/// needed (access is already granted).
+///
+/// - `.denied` from a STICKY denial: macOS remembers the denial and will not
+///   ask again, so the alert must not promise "Try Again" will fix it — it
+///   offers "Open System Settings" (primary) and explains the `tccutil
+///   reset Calendar` route as the only way to get a fresh prompt.
+/// - `.denied` from a DECLINED prompt: the state was requestable, so
+///   "Try Again" is still meaningful and is offered alongside Settings.
+/// - `.restricted`: a management profile or parental controls blocks Calendar
+///   on this Mac — no request can help, so there is no settings button and
+///   the message must not suggest Settings will fix it.
+func calendarAlertPlan(
+    for access: CalendarAccess,
+    origin: CalendarDenialOrigin = .stickyDenial
+) -> CalendarAlertPlan? {
+    switch access {
+    case .granted:
+        return nil
+    case .denied:
+        if origin == .declinedRequest {
+            return CalendarAlertPlan(
+                title: "Calendar access not granted",
+                message:
+                    "A calendar meeting is needed to start a recording with context. " +
+                    "Grant Calendar access in System Settings ▸ Privacy & Security ▸ " +
+                    "Calendars, or press Try Again to check once more.",
+                showsSettingsButton: true,
+                showsTryAgainButton: true
+            )
+        }
+        return CalendarAlertPlan(
+            title: "Calendar access is already denied",
+            message:
+                "A calendar meeting is needed to start a recording with context. " +
+                "macOS remembers a Calendar denial and will not ask again, so pressing " +
+                "Try Again cannot fix this. Enable Oatmeal in System Settings ▸ Privacy " +
+                "& Security ▸ Calendars (use the pane's + button if Oatmeal is not " +
+                "listed), or run 'tccutil reset Calendar' in Terminal and click the " +
+                "menu item again to make the prompt reappear.",
+            showsSettingsButton: true,
+            showsTryAgainButton: false
+        )
+    case .restricted:
+        return CalendarAlertPlan(
+            title: "Calendar access is blocked",
+            message:
+                "Calendar access is blocked by a management profile or parental " +
+                "controls on this Mac, so the app can't be granted access here. " +
+                "Ask the administrator who manages this computer to allow it.",
+            showsSettingsButton: false,
+            showsTryAgainButton: false
+        )
+    case .notDetermined:
+        // `checkOrRequestAccess` resolves `.notDetermined` to `.granted` or
+        // `.denied` (it raises the real prompt first), so this is a fallback
+        // for the still-requestable case.
+        return calendarAlertPlan(for: .denied, origin: .declinedRequest)
+    }
+}
+
+/// Pure button→response mapping for the calendar-access alert, testable
+/// without AppKit (CAL3.T4).
+///
+/// `pressedButtonIndex` is the 0-based index of the button the user pressed,
+/// in the order the plan added the buttons (the first added button is index
+/// 0 — matching `NSApplication.ModalResponse`, whose values are
+/// `alertFirstButtonReturn` (1000) + index). The mapping walks the SAME
+/// flags that added the buttons, so each button can only ever map to the
+/// action it represents: a single-button alert can never be misread as a
+/// different action, and any index the plan did not add is a plain dismiss.
+func calendarAlertResponse(
+    plan: CalendarAlertPlan?,
+    pressedButtonIndex: Int
+) -> CalendarAlertResponse {
+    guard let plan, pressedButtonIndex >= 0 else { return .dismiss }
+    var index = 0
+    if plan.showsSettingsButton {
+        if pressedButtonIndex == index { return .openSettings }
+        index += 1
+    }
+    if plan.showsTryAgainButton {
+        if pressedButtonIndex == index { return .tryAgain }
+        index += 1
+    }
+    return .dismiss
 }

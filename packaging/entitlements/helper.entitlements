@@ -4,14 +4,15 @@
   (Contents/Resources/mr-capture), the small Swift binary that records
   microphone + system audio.
 
-  The hardened runtime (required for notarization) revokes the audio
-  entitlements that a non-hardened binary would otherwise get from
-  TCC grants, so mr-capture must declare them explicitly. These are the
-  MINIMAL exceptions for the first notarization attempt; do not add more
-  without a concrete failure that justifies it.
-
-  - com.apple.security.device.audio-input: microphone capture, required
-    once the helper runs under the hardened runtime.
+  MIC-TCC.T2: the helper INTENTIONALLY declares NO microphone
+  entitlement. Because it has no com.apple.security.device.audio-input
+  of its own, macOS decides microphone access for the responsible
+  process, the Oatmeal app (which holds the entitlement, see
+  app.entitlements), so the microphone grant applies to the helper and
+  the helper never appears as its own entry in System Settings,
+  Privacy and Security. Do NOT re-add the audio-input key here. These
+  are the MINIMAL exceptions for the first notarization attempt; do not
+  add more without a concrete failure that justifies it.
   - com.apple.security.cs.allow-jit: defensive; the helper's Swift
     runtime and any code paths it exercises must stay JIT-capable.
   - com.apple.security.cs.allow-unsigned-executable-memory: defensive;
@@ -21,8 +22,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.device.audio-input</key>
-	<true/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>

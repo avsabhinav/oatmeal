@@ -139,8 +139,18 @@ sign_bin "$MACOS_BIN" "$APP_ENT"
 
 # mr-capture may be absent in a dev build (menu-bar/install.sh warns and
 # continues without it) — warn and skip rather than half-sign.
+#
+# Sign the helper with an EXPLICIT helper-of-app identifier (com.oatmeal.app.mr-capture)
+# so its code identity cannot look like a separate application: a binary with its
+# own standalone identifier becomes its own TCC subject and shows up as a second
+# row in System Settings ▸ Privacy.
 if [[ -f "$CAP_BIN" ]]; then
-  sign_bin "$CAP_BIN" "$HELPER_ENT"
+  echo "signing: $CAP_BIN"
+  codesign --force --options runtime --timestamp \
+    --identifier com.oatmeal.app.mr-capture \
+    --entitlements "$HELPER_ENT" \
+    --sign "$IDENTITY" "$CAP_BIN"
+  MACHO_SIGNED=$((MACHO_SIGNED + 1))
 else
   echo "WARN: $CAP_BIN missing — skipping helper (dev build without embedded helper?)."
 fi

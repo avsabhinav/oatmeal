@@ -344,25 +344,30 @@ Add a Script Command with:
 
 ## 7. Permissions
 
-`mr-capture` needs **two** permissions, both granted the first time a capture
-starts (TCC prompt; the binary embeds usage descriptions and is adhoc-signed):
+Capture needs **two** permissions, both granted the first time a capture
+starts (TCC prompt):
 
-- **Microphone** — records your mic stream (You).
+- **Microphone** — records your mic stream (You). The microphone entitlement
+  is held by the **Oatmeal** app (`packaging/entitlements/app.entitlements`);
+  the `mr-capture` helper deliberately carries no microphone entitlement, so
+  this grant is attributed to, granted to, and shown as Oatmeal alone.
 - **System Audio Recording** (macOS 14.2+) — records the speaker audio (Them).
+  The helper performs the Core Audio process tap and embeds its own usage
+  description, so this grant is the helper's own.
 
-Grant them under **System Settings ▸ Privacy & Security** — enable the entry
-for the capturing process under **Microphone**, and the corresponding system
-audio / Screen Recording entry for the system-audio capture. The entry may
-show the `mr-capture` helper or the app that launched it (Terminal /
-Shortcuts). **If a permission is denied, the recording may still appear to
-work but the track can be silent** — see
+Grant them under **System Settings ▸ Privacy & Security** — the **Microphone**
+entry shows **Oatmeal** (the only Microphone entry you should see), and the
+system audio / Screen Recording entry is the capturing helper. **If a
+permission is denied, the recording may still appear to work but the track can
+be silent** — see
 [docs/permissions-troubleshooting.md](permissions-troubleshooting.md) for how
 to verify your capture actually has audio.
 
-For the menu-bar app specifically, the TCC prompts are attributed to the app
-(`Oatmeal` / the `mr-capture` helper it launches), **not** a Terminal. If a
-prompt was previously granted to Terminal, it may not carry over to the app;
-re-grant for the app-path per the permissions guide.
+If a grant was previously made to the old `mr-capture` helper or to
+Terminal/Shortcuts, it may not carry over: reset it once with
+`tccutil reset Microphone` (and `tccutil reset Calendar` if you use
+**Start Recording from Calendar…**) and re-grant on the next prompt, per the
+permissions guide.
 
 ---
 
@@ -421,6 +426,17 @@ the **plain Start Recording** item keeps working without any calendar, and the
 feature degrades gracefully if Calendar permission is not granted. EventKit
 access is owned entirely by the menu-bar app (never the Python core).
 
+**Calendar permission is prompt-first.** The first time you choose **Start
+Recording from Calendar…**, macOS raises its permission prompt — choose
+**Allow** and the meeting list appears straight away. That prompt is also what
+creates the Oatmeal row under **System Settings ▸ Privacy & Security ▸
+Calendars**, so the Settings pane is the *fallback*, not the first step. If
+you choose **Don't Allow**, the alert offers **Open System Settings** (which
+jumps straight to the Calendar pane) and **Try Again** (which re-checks the
+permission and continues to the meeting list once you have granted it). See
+[docs/permissions-troubleshooting.md](permissions-troubleshooting.md) for the
+write-only and restricted cases.
+
 ---
 
 ## 10. Menu-bar app (beta)
@@ -438,7 +454,15 @@ menu (no polling).
   `menu-bar/.build/Release/Oatmeal.app` (drag into `/Applications` or launch in place).
 - **Manual test + permissions:** see
   [docs/menu-bar-manual-test.md](menu-bar-manual-test.md) — the app is the
-  responsible process for the Microphone / System Audio TCC prompts.
+  responsible process for the **Microphone** prompt (the microphone
+  entitlement lives on the app, not the helper), and the helper holds its own
+  **System Audio Recording** permission. **Calendar** is prompt-first: the
+first **Start Recording from Calendar…** click raises the macOS prompt
+(choose **Allow** and the meeting list opens), and if you decline, the
+alert offers **Open System Settings** (jumps to the Calendar pane) and
+**Try Again** (continues once granted). If a grant was previously made to the
+  old helper or a Terminal, reset it once with `tccutil reset Microphone` (and
+  `tccutil reset Calendar`) and re-grant on the next prompt.
 - **New menu actions need a re-frozen CLI.** The app prefers the frozen CLI
   embedded in `Oatmeal.app/Contents/Resources/mr-cli/` (see
   `AppInfo.mrCandidates()`), so the **Stop Transcription** button and

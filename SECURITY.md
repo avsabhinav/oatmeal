@@ -24,7 +24,7 @@ The repository does not contain — and should never commit — any recordings, 
 
 ## Code signing & permissions
 
-- Release builds of `Oatmeal.app` and its embedded `mr-capture` helper are **Developer ID–signed, hardened-runtime, and notarized by Apple** (`packaging/sign_app.sh`, `packaging/notarize_app.sh`). `mr-capture` embeds usage descriptions for the two macOS TCC permissions it requires: **Microphone** and **System Audio Recording** (macOS 14.2+). You grant both the first time a capture starts.
+- Release builds of `Oatmeal.app` and its embedded `mr-capture` helper are **Developer ID–signed, hardened-runtime, and notarized by Apple** (`packaging/sign_app.sh`, `packaging/notarize_app.sh`). The **Microphone** permission is held by the **Oatmeal** app — the helper deliberately carries no microphone entitlement and no microphone usage description of its own, so the Microphone grant is attributed to Oatmeal alone. `mr-capture` embeds only the **System Audio Recording** usage description (macOS 14.2+) it genuinely requires, since it performs the Core Audio process tap. You grant both the first time a capture starts.
 - A local build from source (`packaging/make_dmg.sh` without `MR_SIGN=1`) is **adhoc-signed and not notarized** — that path exists for development only and is not what releases ship.
 - If you run captures from the `Oatmeal` menu-bar app, the app is the responsible process for the TCC prompts.
 

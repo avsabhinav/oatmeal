@@ -3,15 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>mr-capture</string>
+	<string>Oatmeal recording helper</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.local.mr-capture</string>
+	<string>com.oatmeal.app.mr-capture</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>mr-capture records the microphone audio during a call for local transcription.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>mr-capture records system (speaker) audio during a call for local transcription.</string>
 	<key>LSUIElement</key>

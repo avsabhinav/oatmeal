@@ -31,8 +31,11 @@ swift build --disable-sandbox -c release \
 echo "==> verifying embedded plist section"
 otool -s __TEXT __info_plist "$BIN" | head -20
 
-echo "==> codesign (adhoc)"
-codesign --force --sign - "$BIN"
+echo "==> codesign (adhoc, identifier com.oatmeal.app.mr-capture)"
+# Sign with the explicit helper identifier so a locally built helper carries
+# the same code identity as the shipped one (a helper of Oatmeal.app, not a
+# standalone TCC subject).
+codesign --force --sign - --identifier com.oatmeal.app.mr-capture "$BIN"
 
 echo "==> done: $BIN"
 echo "==> run with: $BIN --out <dir>"

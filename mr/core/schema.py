@@ -54,13 +54,31 @@ class TranscriptionResult:
 
 @dataclass(frozen=True)
 class StreamMeta:
-    """Per-stream capture metadata (mic or system)."""
+    """Per-stream capture metadata (mic or system).
+
+    ``peak`` (peak absolute 16-bit sample value; ``0`` means every sample was
+    zero) and ``rms`` (0..1) describe how loud the captured stream was. Both
+    default to ``None`` so recordings made before the capture helper wrote
+    these fields still parse.
+    """
 
     device_name: str
     native_sample_rate: int
     native_channels: int
     first_sample_seconds: float
     samples_written: int
+    peak: int | None = None
+    rms: float | None = None
+
+
+def is_silent_stream(stream: StreamMeta) -> bool:
+    """True when the stream delivered samples but every sample was zero.
+
+    A stream that was never started (``samples_written == 0``) is not silent —
+    there is simply nothing to judge, and absence of data is not evidence of
+    silence.
+    """
+    return stream.peak == 0 and stream.samples_written > 0
 
 
 @dataclass(frozen=True)
@@ -84,6 +102,8 @@ def _parse_stream(d: dict, key: str) -> StreamMeta:
         native_channels=int(d["native_channels"]),
         first_sample_seconds=float(d["first_sample_seconds"]),
         samples_written=int(d["samples_written"]),
+        peak=int(d["peak"]) if "peak" in d and d["peak"] is not None else None,
+        rms=float(d["rms"]) if "rms" in d and d["rms"] is not None else None,
     )
 
 

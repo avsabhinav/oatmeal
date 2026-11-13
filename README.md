@@ -109,7 +109,8 @@ in the **menu bar** at the top-right of your screen.
 
 The first time you record, macOS asks for two permissions. Allow both:
 
-- **Microphone**: to hear you.
+- **Microphone**: to hear you. This is granted to **Oatmeal** itself — the
+  only app you should ever see listed under Microphone in Privacy settings.
 - **System Audio Recording**: to hear the other side of the call.
 
 That's it, you're set up.
@@ -131,7 +132,8 @@ with `./packaging/make_dmg.sh` (see the
 
 1. Click the Oatmeal icon in the menu bar and choose **Start Recording** just
    before your call. (Or **Start Recording from Calendar...** to attach the
-   meeting's title, attendees and notes.)
+   meeting's title, attendees and notes — the first time, macOS asks for
+   Calendar access; choose **Allow** and the meeting list opens straight away.)
 2. Have your call as usual.
 3. When it's over, choose **Stop Recording & Transcribe**.
 4. Oatmeal transcribes in the background. You can start another recording right
@@ -170,7 +172,8 @@ to get there, or **Change Storage Location...** to put them somewhere else.
 | What you see | What to do |
 | --- | --- |
 | macOS says Oatmeal "can't be opened" | You're likely running an older, pre-notarization build. Download the [latest release](https://github.com/avsabhinav/oatmeal/releases/latest), which is signed and notarized. |
-| One side of the call is missing or silent | A permission is usually off. Check **System Settings → Privacy & Security → Microphone** and **System Audio Recording**, then see [permissions troubleshooting](docs/permissions-troubleshooting.md). |
+| One side of the call is missing or silent | A permission is usually off. Grant **Microphone** to **Oatmeal** (it's the only app you should see under **System Settings → Privacy & Security → Microphone**) and keep **System Audio Recording** allowed. `mr doctor` tells you the mic level of your last recording — `mic: ok` means all good, `mic: SILENT` means Oatmeal still needs Microphone permission. Then see [permissions troubleshooting](docs/permissions-troubleshooting.md). |
+| **Start Recording from Calendar...** doesn't show my meetings | Approving the prompt is the normal path — the first click is what creates Oatmeal's row under **System Settings → Privacy & Security → Calendars**. If you chose **Don't Allow**, use the alert's **Open System Settings** button, or grant it and hit **Try Again**. If Oatmeal is missing from the Calendars list entirely, re-trigger **Start Recording from Calendar...** and approve the prompt to make it appear. |
 | The other side is all `Them`, not `Speaker 1/2/...` | The speaker model isn't downloaded. Run step 2 of the install again. |
 | A transcript never shows up | Look in the transcripts folder for a `<stamp>.FAILED.md` note; it explains what happened and how to retry. You can also use **Re-transcribe...**. |
 

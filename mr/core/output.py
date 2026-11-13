@@ -11,7 +11,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from mr.core.schema import Segment, format_ts
+from mr.core.schema import CaptureMeta, Segment, format_ts, is_silent_stream
 
 #: v2: system-side ``speaker`` may be ``Speaker N`` (diarized); every segment
 #: carries ``track`` (``mic``/``system``) so consumers need not parse labels.
@@ -104,6 +104,33 @@ def _render_frontmatter(
     return "\n".join(lines)
 
 
+def _silence_warnings(capture: CaptureMeta | None) -> list[str]:
+    """Header warning lines for silent tracks; empty when none qualify.
+
+    Only streams that actually delivered samples (``samples_written > 0``)
+    with a zero peak are reported: absence of ``peak`` data (older recordings)
+    is not evidence of silence.
+    """
+    if capture is None:
+        return []
+    lines: list[str] = []
+    if is_silent_stream(capture.mic):
+        lines.append(
+            "- **Warning:** the microphone track is silent (all samples zero). "
+            "`You` lines are missing because no audio was captured. Check "
+            "Microphone permission for Oatmeal in System Settings ▸ "
+            "Privacy & Security."
+        )
+    if is_silent_stream(capture.system):
+        lines.append(
+            "- **Warning:** the system audio track is silent (all samples zero). "
+            "No system speech was captured. Check System Audio Recording permission "
+            "for the mr-capture helper (system audio capture) in System Settings ▸ "
+            "Privacy & Security."
+        )
+    return lines
+
+
 def render_transcript_md(
     *,
     stamp: str,
@@ -111,6 +138,7 @@ def render_transcript_md(
     segments: list[Segment],
     duration_seconds: float,
     context: dict[str, object] | None = None,
+    capture: CaptureMeta | None = None,
 ) -> str:
     """Render the transcript Markdown as a pure string (no file I/O).
 
@@ -123,6 +151,10 @@ def render_transcript_md(
 
     When ``context`` is a non-empty dict, an Obsidian YAML frontmatter
     block is prepended; otherwise the output is unchanged.
+
+    When ``capture`` is given and a track was silent (samples delivered,
+    all zero), a warning line is added to the header so a denied
+    microphone is visible at the top of the transcript.
     """
     lines = [
         f"# Meeting — {stamp}",
@@ -130,6 +162,7 @@ def render_transcript_md(
         f"- **Duration:** {_format_duration(duration_seconds)}",
         f"- **Participants:** {participants_line(segments)}",
         f"- **Source:** {source_dir}",
+        *_silence_warnings(capture),
         "",
         "## Transcript",
         "",

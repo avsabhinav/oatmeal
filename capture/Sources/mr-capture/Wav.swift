@@ -14,6 +14,9 @@ final class WavWriter {
     private var dataBytes: UInt32 = 0
     private var lastPatch = CFAbsoluteTimeGetCurrent()
     private var closed = false
+    private var _peak: Int = 0
+    private var _rmsSumSq: Double = 0
+    private var _sampleCount = 0
 
     init(path: String, sampleRate: UInt32 = 16000) throws {
         self.path = path
@@ -33,10 +36,35 @@ final class WavWriter {
     /// Duration written so far, seconds.
     var durationSeconds: Double { Double(samplesWritten) / Double(sampleRate) }
 
+    /// Peak absolute 16-bit sample value of everything appended (0 = silent).
+    var peakAmplitude: Int { q.sync { _peak } }
+
+    /// Sum of squared 16-bit sample values of everything appended.
+    var rmsNumerator: Double { q.sync { _rmsSumSq } }
+
+    /// RMS amplitude normalized to 0...1 (32768 full scale); 0.0 when nothing was written.
+    var rmsAmplitude: Double {
+        let count = q.sync { _sampleCount }
+        guard count > 0 else { return 0.0 }
+        return sqrt(rmsNumerator / Double(count)) / 32768.0
+    }
+
     func append(_ samples: [Int16]) {
         guard !samples.isEmpty else { return }
         q.async { [self] in
             guard !closed else { return }
+            // Level tracking on the same 16-bit scale that is written.
+            var bufPeak = 0
+            var bufSumSq = 0.0
+            for s in samples {
+                let a = abs(Int(s))
+                if a > bufPeak { bufPeak = a }
+                let d = Double(s)
+                bufSumSq += d * d
+            }
+            if bufPeak > _peak { _peak = bufPeak }
+            _rmsSumSq += bufSumSq
+            _sampleCount += samples.count
             samples.withUnsafeBytes { p in
                 var off = 0
                 while off < p.count {
